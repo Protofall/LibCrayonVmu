@@ -1,0 +1,28 @@
+Import('envs')
+
+# Create our library/s
+lib_dict = dict()
+for e in envs:
+	# Add in some cppflags if in debug mode
+	# if e['DEBUG'] == True:
+		# e.AppendUnique(CPPDEFINES = [{'CRAYON_DEBUG':1}])
+		# These can be helpful sometimes
+		# e.AppendUnique(CPPFLAGS = ['-Wconversion', '-Wno-unused-parameter'])
+		# conversion will check for type conversions (eg uint8_t var = (U32 VAR))
+		# no-unused-parameter disables said check
+
+	build_dir = 'build/'
+	e.VariantDir(build_dir, 'src', duplicate=0)	# Kind of moves over the processing for the code
+													# directory to our build dir duplicate=0 means it
+													# won't duplicate the src files
+
+	prog_files = Glob(build_dir + '/*.c') # We have to specify the build path instead of the real one
+	
+	# We override CPPPATH our output is nice
+	lib_dict[e['SPECIFIC_PLATFORM']] = e.Library(
+		target = 'lib/libcrayon_vmu',
+		source = prog_files,
+		CPPPATH = '${CRAYON_SF_BASE}/include/crayon_vmu'
+	)
+
+Return('lib_dict')
