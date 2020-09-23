@@ -37,7 +37,7 @@ def create_builders(our_vars):
 		env['PROG_NAME'] = our_vars['PROG_NAME']
 
 	#Add in some cflags if you want
-	if 'DEBUG' in our_vars and env['DEBUG'] == True:
+	if 'DEBUG' in our_vars and our_vars['DEBUG'] == True:
 		# Wformat level 2 has extra checks over standard.
 		# no-common is where two files define the same global var when they should be seperate
 		# g3 is like g, but it includes macro information

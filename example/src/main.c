@@ -4,13 +4,9 @@
 
 #include <dc/pvr.h>
 
-#include <kos/fs_romdisk.h> //For romdisk swapping
-
-#include "extra_structs.h"
 #include <crayon_vmu/setup.h>
 
-#define CRAYON_DEBUG 0
-#define CRAYON_BOOT_MODE 0	//Load assets from cd dir instead of sd
+#include "extra_structs.h"
 
 pvr_ptr_t font_tex;
 uint8_t error = 0;
