@@ -105,6 +105,11 @@ void crayon_savefile_set_vmu_bit(uint8_t * vmu_bitmap, int8_t savefile_port, int
 	return;
 }
 
+void crayon_savefile_clear_vmu_bit(uint8_t * vmu_bitmap, int8_t savefile_port, int8_t savefile_slot){
+	*vmu_bitmap &= ~(1 << ((2 - savefile_slot) + 6 - (2 * savefile_port)));
+	return;
+}
+
 void crayon_savefile_load_icon(crayon_savefile_details_t * savefile_details, char * image, char * palette){
 	FILE * icon_data_file;
 	int size_data;
@@ -283,12 +288,15 @@ uint8_t crayon_savefile_load(crayon_savefile_details_t * savefile_details){
 	uint8 *pkg_out;
 	int pkg_size;
 	FILE *fp;
+	uint8_t rv = 0;
 
 	//If you call everying in the right order, this is redundant. But just incase you didn't, here it is
-	//Also we use device and not save because the rest of the load code can automatically check if a save exists so its faster this way
-	//(Since this function and check_for_save share alot of the same code)
-	if(crayon_savefile_check_for_device(savefile_details->savefile_port, savefile_details->savefile_slot, MAPLE_FUNC_MEMCARD)){
-		return 1;
+	//Also we use device and not save because the rest of the load code can automatically check if a save
+	//exists so its faster this way. (Since this function and check_for_save share alot of the same code)
+	if(crayon_savefile_check_for_device(savefile_details->savefile_port, savefile_details->savefile_slot,
+		MAPLE_FUNC_MEMCARD)){
+		rv = 1;
+		goto clear_bits;
 	}
 
 	//Only 25 charaters allowed at max (26 if you include '\0')
@@ -303,7 +311,8 @@ uint8_t crayon_savefile_load(crayon_savefile_details_t * savefile_details){
 
 	//If the savefile DNE, this will fail
 	if(!(fp = fopen(savename, "rb"))){
-		return 2;
+		rv = 2;
+		goto clear_bits;
 	}
 
 	fseek(fp, 0, SEEK_END);
@@ -321,29 +330,44 @@ uint8_t crayon_savefile_load(crayon_savefile_details_t * savefile_details){
 
 	free(pkg_out);
 
+	// Set the bit since it loaded
+	crayon_savefile_set_vmu_bit(&savefile_details->valid_saves, savefile_details->savefile_port,
+		savefile_details->savefile_slot);
+	crayon_savefile_set_vmu_bit(&savefile_details->valid_memcards, savefile_details->savefile_port,
+		savefile_details->savefile_slot);
+
 	return 0;
+
+	clear_bits:
+
+	// Load failed, so we assume there was a hotswap
+	if(rv > 1){
+		crayon_savefile_clear_vmu_bit(&savefile_details->valid_memcards, savefile_details->savefile_port,
+			savefile_details->savefile_slot);
+	}
+	crayon_savefile_clear_vmu_bit(&savefile_details->valid_saves, savefile_details->savefile_port,
+		savefile_details->savefile_slot);
+
+	return rv;
 }
 
 uint8_t crayon_savefile_save(crayon_savefile_details_t * savefile_details){
-	//The requested VMU is not a valid memory card
-	if(!crayon_savefile_get_vmu_bit(savefile_details->valid_memcards, savefile_details->savefile_port, savefile_details->savefile_slot)){
-		return 1;
-	}
-
 	//If you call everying in the right order, this is redundant
 	//But just incase you didn't, here it is
-	if(crayon_savefile_check_for_device(savefile_details->savefile_port, savefile_details->savefile_slot, MAPLE_FUNC_MEMCARD)){
-		return 2;
+	uint8_t rv = 0;
+	if(crayon_savefile_check_for_device(savefile_details->savefile_port, savefile_details->savefile_slot,
+		MAPLE_FUNC_MEMCARD)){
+		rv = 1;
+		goto clear_bits;
 	}
 
 	vmu_pkg_t pkg;
-	uint8 *pkg_out, *data;	//pkg_out is allocated in vmu_pkg_build
+	uint8_t *pkg_out, *data;	//pkg_out is allocated in vmu_pkg_build
 	int pkg_size;
 	FILE *fp;
 	file_t f;
 	maple_device_t *vmu;
 	uint16_t blocks_freed = 0;
-	uint8_t rv = 0;
 
 	vmu = maple_enum_dev(savefile_details->savefile_port, savefile_details->savefile_slot);
 
@@ -358,10 +382,11 @@ uint8_t crayon_savefile_save(crayon_savefile_details_t * savefile_details){
 	strcat(savename, savefile_details->save_name);
 
 	int filesize = savefile_details->savefile_size;
-	data = (uint8_t *) malloc(filesize);
+	data = malloc(filesize);
 	if(data == NULL){
 		free(data);
-		return 3;
+		rv = 2;
+		goto clear_bits;
 	}
 	memcpy(data, savefile_details->savefile_data, savefile_details->savefile_size);
 
@@ -393,29 +418,51 @@ uint8_t crayon_savefile_save(crayon_savefile_details_t * savefile_details){
 	if(vmufs_free_blocks(vmu) + blocks_freed < crayon_savefile_bytes_to_blocks(pkg_size)){
 		free(pkg_out);
 		free(data);
-		return 4;
+		rv = 3;
+		goto clear_bits;
 	}
 
 	//Can't open file for some reason
 	if(!(fp = fopen(savename, "wb"))){
 		free(pkg_out);
 		free(data);
-		return 5;
+		rv = 4;
+		goto clear_bits;
 	}
 
 	if(fwrite(pkg_out, 1, pkg_size, fp) != (size_t)pkg_size){
-		rv = 6;
+		fclose(fp);
+		free(pkg_out);
+		free(data);
+		rv = 5;
+		goto clear_bits;
 	}
-	else{
-		//Set the bit since it saved
-		crayon_savefile_set_vmu_bit(&savefile_details->valid_saves, savefile_details->savefile_port,
-			savefile_details->savefile_slot);
-	}
+
+	//Set the bit since it saved
+	crayon_savefile_set_vmu_bit(&savefile_details->valid_saves, savefile_details->savefile_port,
+		savefile_details->savefile_slot);
+	crayon_savefile_set_vmu_bit(&savefile_details->valid_memcards, savefile_details->savefile_port,
+		savefile_details->savefile_slot);
 
 	fclose(fp);
 
 	free(pkg_out);
 	free(data);
+
+	return 0;
+
+	clear_bits:
+
+	// Save failed, so we assume there was a hotswap
+	if(rv > 1){
+		crayon_savefile_clear_vmu_bit(&savefile_details->valid_memcards, savefile_details->savefile_port,
+			savefile_details->savefile_slot);
+	}
+	// Error 2 is a failed malloc, doesn't necessarily mean there's no save
+	if(rv != 2){
+		crayon_savefile_clear_vmu_bit(&savefile_details->valid_saves, savefile_details->savefile_port,
+			savefile_details->savefile_slot);
+	}
 
 	return rv;
 }

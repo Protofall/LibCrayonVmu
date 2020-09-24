@@ -57,6 +57,7 @@ int16_t crayon_savefile_get_save_block_count(crayon_savefile_details_t * savefil
 
 uint8_t crayon_savefile_get_vmu_bit(uint8_t vmu_bitmap, int8_t savefile_port, int8_t savefile_slot);	//Returns boolean
 void crayon_savefile_set_vmu_bit(uint8_t * vmu_bitmap, int8_t savefile_port, int8_t savefile_slot);	//Updates vmu_bitmap
+void crayon_savefile_clear_vmu_bit(uint8_t * vmu_bitmap, int8_t savefile_port, int8_t savefile_slot);
 
 
 //------------------Called externally----------------------
